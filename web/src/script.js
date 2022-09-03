@@ -13,9 +13,7 @@ button.addEventListener("click", async () => {
   const fileName = "sample.pdf";
   const pdf = await loadLocalPdf(`./${fileName}`);
 
-  const blobStore = new Blob([pdf], {
-    type: 'application/pdf'
-  });
+  const blobStore = new Blob([pdf], { type: 'application/pdf' });
   const data = window.URL.createObjectURL(blobStore);
   const link = document.createElement('a');
   link.href = data;

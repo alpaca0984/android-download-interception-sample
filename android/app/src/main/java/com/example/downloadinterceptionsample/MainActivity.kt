@@ -2,7 +2,9 @@ package com.example.downloadinterceptionsample
 
 import android.annotation.SuppressLint
 import android.content.Context
+import android.content.Intent
 import android.os.Bundle
+import android.os.Environment
 import android.util.Base64
 import android.webkit.JavascriptInterface
 import android.webkit.URLUtil
@@ -17,10 +19,12 @@ import androidx.compose.material.Text
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.content.FileProvider
 import com.example.downloadinterceptionsample.ui.theme.DownloadInterceptionSampleTheme
 import java.io.File
 
 private const val JS_INTERFACE_NAME = "android"
+private const val FILE_AUTHORITY = "com.example.downloadinterceptionsample"
 
 class MainActivity : ComponentActivity() {
 
@@ -51,7 +55,8 @@ class MainActivity : ComponentActivity() {
                                     if (url.startsWith("blob:")) {
                                         val script = JavaScriptInterfaceImpl.fetchBlobScript(
                                             blobUrl = url,
-                                            mimetype = mimetype
+                                            contentDisposition = contentDisposition,
+                                            mimetype = mimetype,
                                         )
                                         evaluateJavascript(script, null)
                                     }
@@ -66,26 +71,39 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-class JavaScriptInterfaceImpl(
-    private val context: Context
-) {
+class JavaScriptInterfaceImpl(private val context: Context) {
 
     @JavascriptInterface
-    fun receiveBase64(base64: String, url: String, mimetype: String) {
+    fun receiveBase64(
+        base64: String,
+        url: String,
+        contentDisposition: String,
+        mimetype: String,
+    ) {
         val content = Base64.decode(base64, Base64.DEFAULT)
-        val fileName = URLUtil.guessFileName(url, "", mimetype)
-        val file = File(context.filesDir, fileName)
+        val fileName = URLUtil.guessFileName(url, contentDisposition, mimetype)
+        val file = File(
+            Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
+            fileName
+        )
+
         file.writeBytes(content)
 
-//        val intent = Intent(Intent.ACTION_VIEW).apply {
-//            setDataAndType(Uri.fromFile(file), mimetype)
-//        }
-//        context.startActivity(intent)
+        val uri = FileProvider.getUriForFile(context, FILE_AUTHORITY, file)
+        val intent = Intent(Intent.ACTION_VIEW).apply {
+            setDataAndType(uri, mimetype)
+            flags = Intent.FLAG_GRANT_READ_URI_PERMISSION
+        }
+        context.startActivity(intent)
     }
 
     companion object {
 
-        fun fetchBlobScript(blobUrl: String, mimetype: String): String {
+        fun fetchBlobScript(
+            blobUrl: String,
+            contentDisposition: String,
+            mimetype: String,
+        ): String {
             return """
                 (async () => {
                   const response = await fetch('${blobUrl}', {
@@ -98,7 +116,12 @@ class JavaScriptInterfaceImpl(
                   const reader = new FileReader();
                   reader.addEventListener('load', () => {
                     const base64 = reader.result.replace(/^data:.+;base64,/, '');
-                    ${JS_INTERFACE_NAME}.receiveBase64(base64, blobUrl, mimetype);
+                    ${JS_INTERFACE_NAME}.receiveBase64(
+                      base64,
+                      '${blobUrl}',
+                      '${contentDisposition}',
+                      '${mimetype}'
+                    );
                   });
                   reader.readAsDataURL(blob); 
                 })();
